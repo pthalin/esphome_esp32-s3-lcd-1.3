@@ -1,8 +1,8 @@
-# ESPHome configuration for Spotpear ESP32-S3-LCD-1.3
+# ESPHome for Spotpear ESP32-S3-LCD-1.3
 
 Template for your own Esphome projects. Feel free to use the arfilliate links below to support me!
 
-Buy [Spotpear ESP32-S3-LCD-1.3](ttps://s.click.aliexpress.com/e/_c4rHj723) from AliExpress
+Buy [Spotpear ESP32-S3-LCD-1.3](https://s.click.aliexpress.com/e/_c4rHj723) from AliExpress
 
 ESPHome [yaml file](display3.yaml) 
 
