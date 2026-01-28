@@ -1,0 +1,199 @@
+esphome:
+  name: display3
+  friendly_name: display3
+  
+external_components:
+  - source: github://Djelibeybi/esphome-qmi8658@main
+    components: [qmi8658]
+    
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: INFO
+  
+api:
+  encryption:
+    key: !secret display3_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret display3_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "Display3 Fallback Hotspot"
+    password: !secret display3_ap_password
+
+captive_portal:
+
+i2c:
+    sda: GPIO47
+    scl: GPIO48
+    id: bus_i2c
+    
+spi:
+  - id: bus_lcd
+    clk_pin: GPIO40
+    mosi_pin: GPIO41
+    
+light:
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO15
+    chipset: WS2812
+    num_leds: 1
+    name: "RGB"
+    id: light_rgb
+
+globals:
+  - id: motion_flag
+    type: bool
+    initial_value: 'false'
+
+qmi8658:
+  id: imu_sensor
+  address: 0x6B 
+  update_interval: 100ms
+
+  # Range and ODR configuration (all optional)
+  accel_range: 2G # Options: 2G, 4G, 8G, 16G
+  gyro_range: 2048DPS # Options: 16DPS, 32DPS, 64DPS, 128DPS, 256DPS, 512DPS, 1024DPS, 2048DPS
+  accel_odr: 500HZ # Options: 8000HZ, 4000HZ, 2000HZ, 1000HZ, 500HZ, 250HZ, 125HZ, 62.5HZ, 31.25HZ
+  gyro_odr: 500HZ # Options: 8000HZ, 4000HZ, 2000HZ, 1000HZ, 500HZ, 250HZ, 125HZ, 62.5HZ, 31.25HZ
+
+  # Fires once when motion is detected (leading edge only)
+  on_motion:
+    then:
+      - lambda: |-
+          id(motion_flag) = true;
+
+  # Fires when device orientation changes
+  on_orientation_change:
+    then:
+      - logger.log:
+          level: INFO
+          format: "Orientation changed to: %s"
+          args: ['orientation.c_str()']
+
+sensor:
+  - platform: qmi8658
+    qmi8658_id: imu_sensor
+
+    accel_x:
+      id: accel_x
+      internal: true
+    accel_y:
+      id: accel_y
+      internal: true
+    accel_z:
+      id: accel_z
+      internal: true
+    gyro_x:
+      id: gyro_x
+      internal: true
+    gyro_y:
+      id: gyro_y
+      internal: true
+    gyro_z:
+      id: gyro_z
+      internal: true 
+    pitch:
+      id: pitch
+      internal: true  
+    roll:
+      id: roll
+      internal: true   
+    temperature:
+      id: imu_temp
+      internal: true 
+      
+binary_sensor:
+  - platform: qmi8658
+    qmi8658_id: imu_sensor
+    motion:
+      id: motion
+      threshold: 0.5  # m/s² deviation from gravity
+
+text_sensor:
+  - platform: qmi8658
+    qmi8658_id: imu_sensor
+    orientation:
+      name: "Device Orientation"
+      id: orietation
+
+display:
+  - platform: st7789v
+    spi_id: bus_lcd
+    id: my_display
+    model: Custom
+    rotation: 270
+    width: 240
+    height: 240
+    offset_height: 0
+    offset_width: 0
+    cs_pin: GPIO39
+    dc_pin: GPIO38
+    reset_pin: GPIO42
+    update_interval: .5s
+    lambda: |-
+      auto call = id(light_rgb).turn_on();
+      float led_green = 0;
+      float led_blue = 0;
+      call.set_transition_length(0);
+
+      if (id(pitch).state < -90) led_green = 0;
+      else if (id(pitch).state > 90) led_green = 1;
+      else led_green = (id(pitch).state + 90.0f)/180.0f;
+      
+      if (id(roll).state < -90) led_blue= 0;
+      else if (id(roll).state > 90) led_blue = 1;
+      else led_blue = (id(roll).state + 90.0f)/180.0f;
+
+      call.set_rgb(1 - 0.5*led_green - 0.5*led_blue, led_green, led_blue);
+
+      call.perform();
+
+      it.fill(my_orange);
+      it.printf(0, 0, id(my_font), "Orientation: %s", id(orietation).state.c_str());
+      it.printf(0, 20, id(my_font), "Pitch: %.1f °", id(pitch).state);
+      it.printf(0, 40, id(my_font), "Roll: :%.1f °", id(roll).state);
+      it.printf(0, 60, id(my_font), "Gyro x %.1f °/s", id(gyro_x).state);
+      it.printf(0, 80, id(my_font), "Gyro y: %.1f °/s", id(gyro_y).state);
+      it.printf(0, 100, id(my_font), "Gyro z: %.1f °/s", id(gyro_z).state);
+      it.printf(0, 120, id(my_font), "Accel x: %.1f m/s²", id(accel_x).state);
+      it.printf(0, 140, id(my_font), "Accel y: %.1f m/s²", id(accel_y).state);
+      it.printf(0, 160, id(my_font), "Accel z: %.1f m/s²", id(accel_z).state);
+      it.printf(0, 180, id(my_font), "Chip temperature %.1f °C", id(imu_temp).state);
+
+      if (id(motion_flag)) {
+        it.printf(0, 200, id(my_font), "Motion: yes");
+        id(motion_flag) = false;
+      }
+      else {
+        it.printf(0, 200, id(my_font), "Motion: no");
+      }
+
+font:
+  - file: "gfonts://Roboto"
+    id: my_font
+    size: 20
+    glyphs: 
+      - "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?- /:_=+"
+      - "\u00B2" # Raised square 2
+      - "\u00B0" # Degree symbol
+color:
+  - id: my_orange
+    red: 100%
+    green: 37%
+    blue: 12%
+    
